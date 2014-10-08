@@ -1,8 +1,26 @@
 <form method='post'>
-    Text to ROT13:
+    <H1>Signup</H1>
     <br>
-    <textarea cols='50' rows='5' name='text'>{{ text }}</textarea>
+
+    Username
+    <input type="text" name="username" value="{{username}}">
+    {{username_error}}
     <br>
-    <input type="submit">
+
+    Password
+    <input type="password" name="password" value="">
+    {{password_error}}
     <br>
+
+    Verify password
+    <input type="password" name="verify" value="">
+    {{verify_error}}
+    <br>
+
+    Email (optional)
+    <input type="email" name="email" value="{{email}}">
+    {{email_error}}
+    <br>
+    <input type="submit" value="Submit">
+ 
 </form>
