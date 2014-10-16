@@ -1,11 +1,9 @@
 """`main` is the top level module for your Flask application."""
-
+from google.appengine.ext import db
 # Import the Flask Framework
 from flask import Flask, request, redirect, url_for
 import jinja2
 import os
-import re
-
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
@@ -20,21 +18,27 @@ app.debug = True
 loader = jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templates'))
 env = jinja2.Environment(autoescape=True,
                          loader=loader)
-form_html = env.get_template('form.html')
-fizzbuzz_html = env.get_template('fizzbuzz.html')
+ascii_html = env.get_template('ascii.html')
+output_html = env.get_template('output.html')
 
-@app.route('/', methods=["GET"])
+
+
+@app.route('/', methods=["GET", "POST"])
 def main_page():
-    foods = request.args.getlist('food')
-    return form_html.render(foods=foods)
+    arts = db.GqlQuery("SELECT * FROM Art ORDER BY created DESC")
+    if request.method == 'POST':
+        title = request.form["title"]
+        art = request.form["art"]
+        if title and art:
+            a = Art(title=title, art=art)
+            a.put()
+            arts = db.GqlQuery("SELECT * FROM Art ORDER BY created DESC")
+            return redirect(url_for('main_page'))
+        else:
+            return ascii_html.render(art=art, title=title, error="we need both a title and some artwork!", arts=arts)
+    else:
+        return ascii_html.render(arts=arts)
 
-
-@app.route('/fizzbuzz', methods=['GET'])
-def fizzbuzz():
-    n = request.args.get('n')
-    if n:
-        n = int(n)
-    return fizzbuzz_html.render(n=n)
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -42,3 +46,8 @@ def page_not_found(e):
     return 'Sorry, Nothing at this URL.', 404
 
 
+class Art(db.Model):
+    title = db.StringProperty(required=True)
+    art = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+    
