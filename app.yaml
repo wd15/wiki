@@ -38,3 +38,5 @@ libraries:
    version: latest
 -  name: markupsafe
    version: latest
+
+auto_id_policy: default

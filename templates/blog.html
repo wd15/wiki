@@ -1,0 +1,30 @@
+<!DOCTYPE HTML>
+
+<html>
+  <link rel=stylesheet type=text/css href=" {{ url_for('static', filename='style.css') }} ">
+  <head>
+    <title>Udacity 253 Blog</title>
+  </head>
+
+  <body>
+    <h1>Udacity 253 Blog</h1>
+
+    <hr>
+
+    {% for post in blogposts[:10] %}
+      <div class="post">
+        <div class="post-title">
+          <a href="{{ url_for('blog_by_id', post_id=post.key().id()) }}">
+            {{ post.title }}
+          </a>
+          {{ post.created.date() }}
+        </div>
+        <pre class="post-body">{{ post.post }}</pre>
+      </div>
+      
+      <hr>
+
+    {% endfor %}
+  </body>
+</html>
+
