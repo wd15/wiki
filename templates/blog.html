@@ -1,30 +1,27 @@
-<!DOCTYPE HTML>
+{% extends "layout.html" %}
 
-<html>
-  <link rel=stylesheet type=text/css href=" {{ url_for('static', filename='style.css') }} ">
-  <head>
-    <title>Udacity 253 Blog</title>
-  </head>
+{% block body %}
 
-  <body>
-    <h1>Udacity 253 Blog</h1>
+<ul class="entries">
+  {% for entry in entries[:10] %}
+    <li>
+      <h2>
+        <a href="{{ url_for('blog_entry_id', entry_id=entry.key().id()) }}">
+          {{ entry.subject }}
+        </a>
+        <span style="float: right">{{ entry.created.date() }}</span>
+      </h2>
+      <p style="width:65ch">{{ entry.content }}</p>
+      <br>
+  {% else %}
+    <li>
+      <em>No entries so far.</em>
+  {% endfor %}
+</ul>
 
-    <hr>
+<footer>
+  <p>Queried {{ qt_lag }} seconds ago</p>
+</footer>
 
-    {% for post in blogposts[:10] %}
-      <div class="post">
-        <div class="post-title">
-          <a href="{{ url_for('blog_by_id', post_id=post.key().id()) }}">
-            {{ post.title }}
-          </a>
-          {{ post.created.date() }}
-        </div>
-        <pre class="post-body">{{ post.post }}</pre>
-      </div>
-      
-      <hr>
-
-    {% endfor %}
-  </body>
-</html>
+{% endblock %}
 

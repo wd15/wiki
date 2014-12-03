@@ -1,30 +1,24 @@
-<!DOCTYPE HTML>
+{% extends "layout.html" %}
 
-<html>
-  <head>
-    <title>Submit</title>
-  </head>
+{% block body %}
 
-  <body>
-    <h1>Post Submit</h1>
+  <form method="post" class="add-entry">
+    <label>
+      <div>Title</div>
+      <input type="text" name="subject" value="{{subject}}">
+    </label>
 
-    <form method="post">
-      <label>
-        <div>Title</div>
-        <input type="text" name="title" value="{{title}}">
-      </label>
-
-      <label>
-        <div>Post</div>
-        <textarea name="post">{{post}}</textarea>
-      </label>
+    <label>
+      <div>Text</div>
+      <textarea name="content" rows="5" cols="40">{{content}}</textarea>
+    </label>
       
+    {% if error %}
       <div class="error">{{error}}</div>
+    {% endif %}
 
-      <input type="submit" name="submit">
-    </form>
+    <input type="submit" name="Share">
+  </form>
 
-  </body>
-
-</html>
+{% endblock %}
 

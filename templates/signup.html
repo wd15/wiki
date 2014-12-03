@@ -1,0 +1,17 @@
+{% extends "login_base.html" %}
+
+{% block title %} Signup {% endblock %}
+
+{% block signup %} 
+Verify password
+<input type="password" name="verify" value="">
+{{verify_error}}
+<br>
+
+Email (optional)
+<input type="email" name="email" value="{{email}}">
+{{email_error}}
+<br>
+{% endblock %}
+
+
