@@ -4,14 +4,12 @@ from google.appengine.ext import db
 from flask import Flask, request, redirect, url_for, make_response, render_template
 import jinja2
 import os
-import json
 from werkzeug.security import generate_password_hash, check_password_hash
-from google.appengine.api import memcache
-import time
 from werkzeug.routing import BaseConverter
-
-from database import WikiEntry, UserLogin
+import hmac
 import tools
+import re
+
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
@@ -47,9 +45,9 @@ def signup():
                 password_hash = generate_password_hash(password)
                 user = UserLogin(username=username, password_hash=password_hash)
                 user.put()
-                wiki_page = request.args.get('wiki_page')
-                response = tools.redirect_to_wiki_page(wiki_page)
-                response = tools.add_login_cookie(user, response)
+                wiki_page = request.args.get('wiki_page', '')
+                response = redirect_to_wiki_page(wiki_page)
+                response = add_login_cookie(user, response)
                 return response
     else:
         return render_template('signup.html')
@@ -65,8 +63,8 @@ def login():
         user = q.get()
 
         if user and check_password_hash(user.password_hash, password):
-            response = tools.redirect_to_wiki_page(wiki_page)
-            return tools.add_login_cookie(q[0], response)
+            response = redirect_to_wiki_page(wiki_page)
+            return add_login_cookie(q[0], response)
         else:
             return render_template('login.html', username=username, password_error="Invalid login.")
     else:
@@ -74,11 +72,12 @@ def login():
 
 @app.route('/logout', methods=["GET"])
 def logout():
-    wiki_page = request.args.get('wiki_page')
-    response = tools.redirect_to_wiki_page(wiki_page)
+    wiki_page = request.args.get('wiki_page', '')
+    response = redirect_to_wiki_page(wiki_page)
     response.set_cookie('userhash', '', expires=0)
     return response
 
+# @app.route('/_edit', methods=["GET", "POST"])
 @app.route('/_edit', methods=["GET", "POST"])
 @app.route('/_edit/', methods=["GET", "POST"])
 @app.route('/_edit/<wiki_page>', methods=["GET", "POST"])
@@ -93,19 +92,19 @@ def edit_wiki(wiki_page=''):
 
         if request.method == 'POST':
             content = request.form['content']
-            print 'content',content
             if content:
-                entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+                entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
                 if entry:
                     entry.content = content
                 else:
-                    entry = WikiEntry(content=content, wiki_page='/' + wiki_page)
+                    print 'wiki_page',wiki_page
+                    entry = WikiEntry(content=content, wiki_page=wiki_page)
                 entry.put()
-                return tools.redirect_to_wiki_page(wiki_page)
+                return redirect_to_wiki_page(wiki_page)
             else:
                 return render_template('edit_wiki.html', username=user.username, error='Please submit some content')
         else:
-            entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+            entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
             if entry:
                 content = entry.content
             else:
@@ -117,19 +116,91 @@ class RegexConverter(BaseConverter):
         super(RegexConverter, self).__init__(url_map)
         self.regex = items[0]
         
-# app.url_map.converters['regex'] = RegexConverter
-# PAGE_RE = r"(/(?:[a-zA-Z0-9_-]+/?)*)"
+app.url_map.converters['regex'] = RegexConverter
+PAGE_RE = r"((?:[a-zA-Z0-9_-]+/?)*)"
+@app.route('/<regex("{0}"):wiki_page>'.format(PAGE_RE))
 @app.route('/')
-@app.route('/<wiki_page>')
 def view_wiki(wiki_page=''):
     userhash = request.cookies.get('userhash', '')
-    user_id = tools.check_secure_val(userhash)
+    user_id = check_secure_val(userhash)
     if user_id is None:
         username = None
     else:
         username = UserLogin.get_by_id(int(user_id)).username
-    entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+    entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
     if entry:       
         return render_template('view_wiki.html', content=entry.content, username=username, wiki_page=wiki_page)
     else:
         return redirect(url_for('edit_wiki', wiki_page=wiki_page))
+
+# security
+    
+def redirect_to_wiki_page(wiki_page):
+    redirection = redirect(url_for('view_wiki', wiki_page=wiki_page))
+    # redirection = redirect('/' + wiki_page)
+    return make_response(redirection)
+
+def add_login_cookie(user, response):
+    user_id = user.key().id()
+    userhash = make_secure_val(str(user_id))
+    response.set_cookie('userhash', userhash)
+    return response
+
+def make_secure_val(s):
+    return "{0}|{1}".format(s, hash_str(s))
+
+SECRET = 'imsosecret'
+def hash_str(s):
+    return hmac.new(SECRET, s).hexdigest()
+
+def check_secure_val(h):
+    val = h.split('|')[0]
+    if h == make_secure_val(val):
+        return val
+
+## check signin errors
+
+USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+PASSWORD_RE = re.compile(r"^.{3,20}$")
+EMAIL_RE = re.compile(r"^[\S]+@[\S]+\.[\S]+$")
+                      
+def valid_username(username):
+    return USER_RE.match(username)
+
+def valid_password(password):
+    return PASSWORD_RE.match(password)
+
+def password_match(p1, p2):
+    return p1 == p2
+
+def valid_email(email):
+    return (email == '') or EMAIL_RE.match(email)
+
+username_error = "That's not a valid username."
+password_error = "That wasn't a valid password."
+verify_error = "Your passwords didn't match."
+email_error = "That's not a valid email."
+
+def get_errors(username, password, verify, email):
+    errors = dict()
+    if not valid_username(username): 
+        errors['username_error'] = username_error
+    if not valid_password(password):
+        errors['password_error'] = password_error
+    if not password_match(password, verify):
+        errors['verify_error'] = verify_error
+    if not valid_email(email):
+        errors['email_error'] = email_error
+    return errors
+
+## models
+
+class WikiEntry(db.Model):
+    wiki_page = db.StringProperty(required=False)
+    content = db.TextProperty(required=True)
+    created = db.DateTimeProperty(auto_now_add=True)
+    last_modified = db.DateTimeProperty(auto_now=True)
+
+class UserLogin(db.Model):
+    username = db.StringProperty(required=True)
+    password_hash = db.StringProperty(required=True)
