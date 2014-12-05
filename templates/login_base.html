@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 
+{% block signout %}{% endblock %}
+
 <form method='post'>
     <H1>{% block title %}{% endblock %}</H1>
     <br>
@@ -18,8 +20,7 @@
     {% block signup %}{% endblock %}
 
     <input type="submit" value="Submit">
-    
- 
+
 </form>
 
 {% endblock %}

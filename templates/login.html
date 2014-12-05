@@ -1,3 +1,12 @@
 {% extends "login_base.html" %}
+
+{% block signout %}
+{% set wiki_page_ = wiki_page %}
+<span style="float: right">
+  <a href={{ url_for("signup", wiki_page=wiki_page_) }}>signup</a>
+ </span>
+{% endblock %}
+
 {% block title %} Login {% endblock %}
+
 

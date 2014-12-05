@@ -50,14 +50,15 @@ def get_errors(username, password, verify, email):
         errors['email_error'] = email_error
     return errors
 
-def redirect_for_welcome(user):
-    user.put()
+def add_login_cookie(user, response):
     user_id = user.key().id()
-    redirection = redirect(url_for('welcome'))
-    response = make_response(redirection)
     userhash = make_secure_val(str(user_id))
     response.set_cookie('userhash', userhash)
     return response
+
+def redirect_to_wiki_page(wiki_page):
+    redirection = redirect('/' + wiki_page)
+    return make_response(redirection)
 
 def json_response(s):
     response = make_response(s)

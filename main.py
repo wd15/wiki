@@ -1,16 +1,17 @@
 """`main` is the top level module for your Flask application."""
 from google.appengine.ext import db
 # Import the Flask Framework
-from flask import Flask, request, redirect, url_for, make_response
+from flask import Flask, request, redirect, url_for, make_response, render_template
 import jinja2
 import os
 import json
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.appengine.api import memcache
 import time
+from werkzeug.routing import BaseConverter
 
-from database import BlogEntry, UserLogin
-from tools import get_errors, redirect_for_welcome, check_secure_val, json_response
+from database import WikiEntry, UserLogin
+import tools
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
@@ -25,88 +26,8 @@ loader = jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templa
 env = jinja2.Environment(autoescape=True,
                          loader=loader)
 env.globals.update(url_for=url_for)
-blog_html = env.get_template('blog.html')
-submit_html = env.get_template('submit.html')
-signup_template = env.get_template('signup.html')
-welcome_template = env.get_template('welcome.html')
-login_template = env.get_template('login.html')
 
-## memcache
-
-def cache(query, key, update):
-    query_time_key = 'qt'
-    value = memcache.get(key)
-    if value is None or update:
-        value = query()
-        memcache.set(key, value)
-        memcache.set(query_time_key, time.time())
-    return value, int(time.time() - memcache.get(query_time_key))
-
-def cache_entry(entry_id, update=False):
-    query = lambda: BlogEntry.get_by_id(entry_id)
-    return cache(query, str(entry_id), update)
-
-def cache_entries(update=False):
-    query = lambda: db.GqlQuery("SELECT * FROM BlogEntry ORDER BY created DESC")
-    return cache(query, 'top10', update)
-
-def cache_update(entry_id):
-    cache_entry(entry_id, update=True)
-    cache_entries(update=True)
-    
-## end points
-
-@app.route('/', methods=['GET'])
-def root():
-    return redirect(url_for('blog'))
-
-@app.route('/blog')
-def blog():
-    entries, qt_lag = cache_entries()
-    return blog_html.render(entries=entries, qt_lag=qt_lag)
-
-@app.route('/blog/.json')
-def blog_json():
-    entries = cache_entries()
-    return json_response(json.dumps([e.to_dict() for e in entries]))
-
-@app.route('/blog/<int:entry_id>')
-def blog_entry_id(entry_id):
-    entry, qt_lag = cache_entry(entry_id)
-    return blog_html.render(entries=[entry], qt_lag=qt_lag)
-
-@app.route('/blog/<int:entry_id>.json')
-def blog_entry_id_json(entry_id):
-    entry = BlogEntry.get_by_id(entry_id)
-    return json_response(json.dumps(entry.to_dict()))
-
-@app.route('/blog/newpost', methods=['GET', 'POST'])
-def blog_newpost():
-    if request.method == 'POST':
-        subject = request.form["subject"]
-        content = request.form["content"]
-        if subject and content:
-            entry = BlogEntry(subject=subject, content=content)
-            entry.put()
-            entry_id = entry.key().id()
-            cache_update(entry_id)
-            return redirect(url_for('blog_entry_id', entry_id=entry_id))
-        else:
-            return submit_html.render(subject=subject, content=content, error="Please submit both a title and some text!")
-    else:
-        return submit_html.render()
-
-@app.route('/blog/flush')
-def flush():
-    memcache.flush_all()
-    return redirect(url_for('blog'))
-
-@app.errorhandler(404)
-def page_not_found(e):
-    """Return a custom 404 error."""
-    return 'Sorry, Nothing at this URL.', 404
-
-@app.route('/blog/signup', methods=["GET", "POST"])
+@app.route('/signup', methods=["GET", "POST"])
 def signup():
     if request.method == 'POST':
         username = request.form['username']
@@ -114,35 +35,28 @@ def signup():
         verify = request.form['verify']
         email = request.form['email']
 
-        errors = get_errors(username, password, verify, email)
+        errors = tools.get_errors(username, password, verify, email)
         if errors:
-            return signup_template.render(username=username, email=email, **errors)
+            return render_template('signup.html', username=username, email=email, **errors)
         else:
             q = UserLogin.all()
             q.filter("username =", username)
             if q.get():
-                return signup_template.render(username=username, email=email, username_error='Already signed up.')
+                return render_template('signup.html', username=username, email=email, username_error='Already signed up.')
             else:
                 password_hash = generate_password_hash(password)
                 user = UserLogin(username=username, password_hash=password_hash)
-                user.put() 
-                return redirect_for_welcome(user)
+                user.put()
+                wiki_page = request.args.get('wiki_page')
+                response = tools.redirect_to_wiki_page(wiki_page)
+                response = tools.add_login_cookie(user, response)
+                return response
     else:
-        return signup_template.render()
+        return render_template('signup.html')
 
-@app.route('/blog/welcome', methods=["GET", "POST"])
-def welcome():
-    userhash = request.cookies.get('userhash', '')
-    user_id = check_secure_val(userhash)
-    if user_id:
-        user = UserLogin.get_by_id(int(user_id))
-        username = user.username
-        return welcome_template.render(username=username)
-    else:
-        return redirect(url_for('main_page'))
-    
-@app.route('/blog/login', methods=["GET", "POST"])
+@app.route('/login', methods=["GET", "POST"])
 def login():
+    wiki_page = request.args.get('wiki_page')
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -151,17 +65,71 @@ def login():
         user = q.get()
 
         if user and check_password_hash(user.password_hash, password):
-            return redirect_for_welcome(q[0])
+            response = tools.redirect_to_wiki_page(wiki_page)
+            return tools.add_login_cookie(q[0], response)
         else:
-            return login_template.render(username=username, password_error="Invalid login.")
+            return render_template('login.html', username=username, password_error="Invalid login.")
     else:
-        return login_template.render()
+        return render_template('login.html')
 
-@app.route('/blog/logout', methods=["GET", "POST"])
+@app.route('/logout', methods=["GET"])
 def logout():
-    redirection = redirect(url_for('signup'))
-    response = make_response(redirection)
+    wiki_page = request.args.get('wiki_page')
+    response = tools.redirect_to_wiki_page(wiki_page)
     response.set_cookie('userhash', '', expires=0)
     return response
- 
 
+@app.route('/_edit', methods=["GET", "POST"])
+@app.route('/_edit/', methods=["GET", "POST"])
+@app.route('/_edit/<wiki_page>', methods=["GET", "POST"])
+def edit_wiki(wiki_page=''):
+    userhash = request.cookies.get('userhash', '')
+    user_id = tools.check_secure_val(userhash)
+
+    if user_id is None:
+        return redirect(url_for('login', wiki_page=wiki_page))
+    else:
+        user = UserLogin.get_by_id(int(user_id))
+
+        if request.method == 'POST':
+            content = request.form['content']
+            print 'content',content
+            if content:
+                entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+                if entry:
+                    entry.content = content
+                else:
+                    entry = WikiEntry(content=content, wiki_page='/' + wiki_page)
+                entry.put()
+                return tools.redirect_to_wiki_page(wiki_page)
+            else:
+                return render_template('edit_wiki.html', username=user.username, error='Please submit some content')
+        else:
+            entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+            if entry:
+                content = entry.content
+            else:
+                content = ''
+            return render_template('edit_wiki.html', content=content, username=user.username, wiki_page=wiki_page)
+
+class RegexConverter(BaseConverter):
+    def __init__(self, url_map, *items):
+        super(RegexConverter, self).__init__(url_map)
+        self.regex = items[0]
+        
+# app.url_map.converters['regex'] = RegexConverter
+# PAGE_RE = r"(/(?:[a-zA-Z0-9_-]+/?)*)"
+@app.route('/')
+@app.route('/<wiki_page>')
+def view_wiki(wiki_page=''):
+    userhash = request.cookies.get('userhash', '')
+    user_id = tools.check_secure_val(userhash)
+    if user_id is None:
+        username = None
+    else:
+        username = UserLogin.get_by_id(int(user_id)).username
+    entry = WikiEntry.all().filter('wiki_page =', '/' + wiki_page).get()
+    if entry:       
+        return render_template('view_wiki.html', content=entry.content, username=username, wiki_page=wiki_page)
+    else:
+        return redirect(url_for('edit_wiki', wiki_page=wiki_page))
