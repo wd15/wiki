@@ -1,13 +1,7 @@
 {% extends "layout.html" %}
-{% set wiki_page_ = wiki_page %}
+
 {% block body %}
-  
-  <span style="float: right">
-    <a href={{ url_for("view_wiki", wiki_page=wiki_page_) }}>view</a>|
-    {{ username }}|
-    <a href={{ url_for("logout", wiki_page=wiki_page_) }}>logout</a>
-  </span>
- 
+
   <form method="post" class="add-entry">
 
     <label>

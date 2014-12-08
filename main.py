@@ -7,23 +7,21 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.routing import BaseConverter
 import hmac
-import tools
 import re
 
 
 app = Flask(__name__)
 app.config['DEBUG'] = True
 app.debug = True
-# Note: We don't need to call run() since our application is embedded within
-# the App Engine WSGI application server.
 
-
-## templates
+# templages
 
 loader = jinja2.FileSystemLoader(os.path.join(os.path.dirname(__file__), 'templates'))
 env = jinja2.Environment(autoescape=True,
                          loader=loader)
 env.globals.update(url_for=url_for)
+
+# views
 
 @app.route('/signup', methods=["GET", "POST"])
 def signup():
@@ -33,7 +31,7 @@ def signup():
         verify = request.form['verify']
         email = request.form['email']
 
-        errors = tools.get_errors(username, password, verify, email)
+        errors = get_errors(username, password, verify, email)
         if errors:
             return render_template('signup.html', username=username, email=email, **errors)
         else:
@@ -45,16 +43,14 @@ def signup():
                 password_hash = generate_password_hash(password)
                 user = UserLogin(username=username, password_hash=password_hash)
                 user.put()
-                wiki_page = request.args.get('wiki_page', '')
-                response = redirect_to_wiki_page(wiki_page)
-                response = add_login_cookie(user, response)
-                return response
+                last = request.args.get('last', url_for('view_wiki'))                    
+                response = make_response(redirect(last))
+                return add_login_cookie(user, response)
     else:
         return render_template('signup.html')
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
-    wiki_page = request.args.get('wiki_page')
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -63,7 +59,8 @@ def login():
         user = q.get()
 
         if user and check_password_hash(user.password_hash, password):
-            response = redirect_to_wiki_page(wiki_page)
+            last = request.args.get('last', url_for('view_wiki'))
+            response = make_response(redirect(last))
             return add_login_cookie(q[0], response)
         else:
             return render_template('login.html', username=username, password_error="Invalid login.")
@@ -72,10 +69,12 @@ def login():
 
 @app.route('/logout', methods=["GET"])
 def logout():
-    wiki_page = request.args.get('wiki_page', '')
-    response = redirect_to_wiki_page(wiki_page)
+    last = request.args.get('last', url_for('view_wiki'))
+    response = make_response(redirect(last))
     response.set_cookie('userhash', '', expires=0)
     return response
+
+# edit view
 
 # @app.route('/_edit', methods=["GET", "POST"])
 @app.route('/_edit', methods=["GET", "POST"])
@@ -83,8 +82,7 @@ def logout():
 @app.route('/_edit/<wiki_page>', methods=["GET", "POST"])
 def edit_wiki(wiki_page=''):
     userhash = request.cookies.get('userhash', '')
-    user_id = tools.check_secure_val(userhash)
-
+    user_id = check_secure_val(userhash)
     if user_id is None:
         return redirect(url_for('login', wiki_page=wiki_page))
     else:
@@ -93,24 +91,21 @@ def edit_wiki(wiki_page=''):
         if request.method == 'POST':
             content = request.form['content']
             if content:
-                entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
-                if entry:
-                    entry.content = content
-                else:
-                    print 'wiki_page',wiki_page
-                    entry = WikiEntry(content=content, wiki_page=wiki_page)
+                entry = WikiEntry(content=content, wiki_page=wiki_page)
                 entry.put()
-                return redirect_to_wiki_page(wiki_page)
+                return redirect(url_for('view_wiki', wiki_page=wiki_page))
             else:
-                return render_template('edit_wiki.html', username=user.username, error='Please submit some content')
+                return render_template('edit_wiki.html', username=user.username, error='Please submit some content', request=request)
         else:
-            entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
+            entry = WikiEntry.get_latest(wiki_page)
             if entry:
                 content = entry.content
             else:
                 content = ''
-            return render_template('edit_wiki.html', content=content, username=user.username, wiki_page=wiki_page)
+            return render_template('edit_wiki.html', content=content, username=user.username, wiki_page=wiki_page, request=request)
 
+# wiki view
+        
 class RegexConverter(BaseConverter):
     def __init__(self, url_map, *items):
         super(RegexConverter, self).__init__(url_map)
@@ -123,20 +118,43 @@ PAGE_RE = r"((?:[a-zA-Z0-9_-]+/?)*)"
 def view_wiki(wiki_page=''):
     userhash = request.cookies.get('userhash', '')
     user_id = check_secure_val(userhash)
+    entry_id = request.args.get('entry_id', None)
     if user_id is None:
         username = None
     else:
         username = UserLogin.get_by_id(int(user_id)).username
-    entry = WikiEntry.all().filter('wiki_page =', wiki_page).get()
+
+    if entry_id:
+        entry = WikiEntry.get_by_id(int(entry_id))
+    else:
+        entry = WikiEntry.get_latest(wiki_page)
     if entry:       
-        return render_template('view_wiki.html', content=entry.content, username=username, wiki_page=wiki_page)
+        return render_template('view_wiki.html', content=entry.content, username=username, wiki_page=wiki_page, request=request)
+    else:
+        return redirect(url_for('edit_wiki', wiki_page=wiki_page))
+
+# history view
+
+@app.route('/_history', methods=["GET", "POST"])
+@app.route('/_history/', methods=["GET", "POST"])
+@app.route('/_history/<wiki_page>', methods=["GET", "POST"])
+def history(wiki_page=''):
+    userhash = request.cookies.get('userhash', '')
+    user_id = check_secure_val(userhash)
+    if user_id is None:
+        username=None
+    else:
+        username = UserLogin.get_by_id(int(user_id)).username
+    entries = WikiEntry.all().filter('wiki_page =', wiki_page).order('-created').fetch(limit=10)
+    if entries:       
+        return render_template('history.html', entries=entries, username=username, wiki_page=wiki_page, request=request)
     else:
         return redirect(url_for('edit_wiki', wiki_page=wiki_page))
 
 # security
     
-def redirect_to_wiki_page(wiki_page):
-    redirection = redirect(url_for('view_wiki', wiki_page=wiki_page))
+def redirect_to_wiki_page(wiki_page, entry_id):
+    redirection = redirect(url_for('view_wiki', wiki_page=wiki_page, entry_id=entry_id))
     # redirection = redirect('/' + wiki_page)
     return make_response(redirection)
 
@@ -201,6 +219,10 @@ class WikiEntry(db.Model):
     created = db.DateTimeProperty(auto_now_add=True)
     last_modified = db.DateTimeProperty(auto_now=True)
 
+    @classmethod
+    def get_latest(cls, wiki_page):
+        return cls.all().filter('wiki_page =', wiki_page).order('-created').get()
+    
 class UserLogin(db.Model):
     username = db.StringProperty(required=True)
     password_hash = db.StringProperty(required=True)

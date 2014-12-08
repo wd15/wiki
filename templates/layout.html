@@ -7,8 +7,25 @@
     <title>Udacity 253 Blog</title>
   </head>
 
+  {% set wiki_page_ = wiki_page %}
+  <span style="float: right">
+    <a href="{{ url_for('view_wiki', wiki_page=wiki_page_) }}">view</a>|
+    <a href="{{ url_for('history', wiki_page=wiki_page_) }}">history</a>
+    {% if username %}
+      |<a href="{{ url_for('edit_wiki', wiki_page=wiki_page_) }}">edit</a>
+      &nbsp;&nbsp;&nbsp;
+      {{ username }}|
+      <a href="{{ url_for('logout', last=request.path) }}">logout</a>
+    {% else %}
+      &nbsp;&nbsp;&nbsp;
+      <a href="{{ url_for('login', last=request.path) }}">login</a>|
+      <a href="{{ url_for('signup', last=request.path) }}">signup</a>
+    {% endif %}
+  </span>
+
+
   <body>
- 
+
     {% block body %}{% endblock %}
 
   </body>

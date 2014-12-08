@@ -1,17 +1,6 @@
 {% extends "layout.html" %}
-{% set wiki_page_ = wiki_page %}
-{% block body %}
 
-  <span style="float: right">
-    {% if username %}
-      <a href={{ url_for("edit_wiki", wiki_page=wiki_page_) }}>edit</a>|
-      {{ username }}|
-      <a href={{ url_for("logout", wiki_page=wiki_page_) }}>logout</a>
-    {% else %}
-      <a href={{ url_for("login", wiki_page=wiki_page_) }}>login</a>|
-      <a href={{ url_for("signup", wiki_page=wiki_page_) }}>signup</a>
-    {% endif %}
-  </span>
+{% block body %}
 
   <br>
   <br>

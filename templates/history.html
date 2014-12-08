@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+
+{% block body %}
+
+<br>
+<br>
+
+<ul class="entries">
+  {% for entry in entries[:10] %}
+    <li>
+      {{ entry.content[:60] }}
+      <span style="float: right">
+        {% set entry_id = entry.key().id() %}
+        <a href={{ url_for("view_wiki", wiki_page=wiki_page_, entry_id=entry_id) }}>view</a>
+      </span>
+      <br>
+  {% endfor %}
+</ul>
+
+{% endblock %}
+
