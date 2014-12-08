@@ -102,6 +102,7 @@ def edit_wiki(wiki_page=''):
                 content = entry.content
             else:
                 content = ''
+            content = ''
             return render_template('edit_wiki.html', content=content, username=user.username, wiki_page=wiki_page, request=request)
 
 # wiki view
@@ -145,7 +146,7 @@ def history(wiki_page=''):
         username=None
     else:
         username = UserLogin.get_by_id(int(user_id)).username
-    entries = WikiEntry.all().filter('wiki_page =', wiki_page).order('-created').fetch(limit=10)
+    entries = WikiEntry.all().filter('wiki_page =', wiki_page).order('-created').fetch(limit=100)
     if entries:       
         return render_template('history.html', entries=entries, username=username, wiki_page=wiki_page, request=request)
     else:
