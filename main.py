@@ -98,12 +98,7 @@ def edit_wiki(wiki_page=''):
                 return render_template('edit_wiki.html', username=user.username, error='Please submit some content', request=request)
         else:
             entry = WikiEntry.get_latest(wiki_page)
-            if entry:
-                content = entry.content
-            else:
-                content = ''
-            content = ''
-            return render_template('edit_wiki.html', content=content, username=user.username, wiki_page=wiki_page, request=request)
+            return render_template('edit_wiki.html', username=user.username, wiki_page=wiki_page, request=request)
 
 # wiki view
         
